@@ -1,0 +1,31 @@
+{
+  "name": "SANU MD-Bot",
+  "description": "WhatsApp bot made by Sanidu",
+  "logo": "https://logo.com/stitch/new-design?template_id=tpl_ErLcaTLUxoFSzBsmgt&variables=%257B%2522text%2522%253A%257B%2522wordmark%2522%253A%2522sanidu%2522%252C%2522slogan%2522%253A%2522%2522%252C%2522monogram_wordmark%2522%253A%2522S%2522%257D%252C%2522icon_id%2522%253A%2522NOUN_PROJECT_2596326%2522%257D&tight_bounds=true&returnTo=%2Flogo-ideas",
+  "keywords": ["bot"],
+  "success_url": "/",
+
+  "env": {
+    "SESSION_ID": {
+      "description": "Put the session-id here.",
+      "required": true
+    },  
+
+    "ALIVE_IMG": {
+      "description": "Put your alive img here.",
+      "required": true
+    },
+    
+    "ALIVE_MSG": {
+      "description": "Put your alive msg here.",
+      "required": true
+    }   
+},
+
+     "buildpacks": [
+        {
+            "url": "https://github.com/heroku/heroku-buildpack-nodejs.git"
+        }
+     ],
+  "stack": "heroku-24"
+}
