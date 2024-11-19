@@ -1,31 +1,27 @@
 {
   "name": "sanidu-bot",
-  "version": "1.0.0",
-  "description": "A feature-rich WhatsApp bot using Baileys.",
+  "version": "2.0.0",
+  "description": "Advanced WhatsApp Bot with Render Deployment",
   "main": "index.js",
   "scripts": {
-    "start": "pm2 start index.js --name 'SaniduBot'",
-    "stop": "pm2 stop 'SaniduBot'",
-    "restart": "pm2 restart 'SaniduBot'",
-    "dev": "node index.js"
+    "start": "node index.js",
+    "dev": "nodemon index.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "6.6.0",
-    "pino": "^7.0.5",
-    "pm2": "^5.2.0",
-    "axios": "^1.2.5",
+    "@whiskeysockets/baileys": "^6.6.0",
+    "axios": "^1.6.2",
     "express": "^4.18.2",
-    "fs-extra": "^11.1.0",
-    "node-fetch": "^2.6.1",
+    "fs-extra": "^11.1.1",
     "megajs": "^1.1.0",
-    "qrcode-terminal": "^0.12.0",
-    "yt-search": "^2.12.1",
-    "api-dylux": "^1.8.5",
-    "mongoose": "^8.8.0"
+    "mongoose": "^8.0.3",
+    "pino": "^8.16.1",
+    "pino-pretty": "^10.2.3",
+    "qrcode-terminal": "^0.12.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.0"
+    "nodemon": "^3.0.2"
   },
-  "author": "Sanidu Herath",
-  "license": "MIT"
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }
