@@ -194,3 +194,228 @@ process.on('SIGTERM', () => {
 });
 
 module.exports = app;
+
+
+// commandHandler.js - Base command handler class
+class BaseCommand {
+    constructor(options) {
+        this.pattern = options.pattern;
+        this.alias = options.alias || [];
+        this.desc = options.desc;
+        this.category = options.category;
+        this.filename = options.filename;
+        this.cooldown = options.cooldown || 0;
+        this.ownerOnly = options.ownerOnly || false;
+    }
+
+    async execute(conn, msg, args) {
+        throw new Error('Execute method must be implemented');
+    }
+}
+
+// alive.js - Enhanced alive command
+class AliveCommand extends BaseCommand {
+    constructor() {
+        super({
+            pattern: "alive",
+            desc: "Check bot online status",
+            category: "main",
+            filename: __filename
+        });
+    }
+
+    async execute(conn, mek, { from, reply }) {
+        try {
+            const config = await readEnv();
+            const uptime = runtime(process.uptime());
+            
+            const aliveMessage = `
+🤖 *Bot Status: Online*
+⏱️ Uptime: ${uptime}
+🔄 Version: ${process.env.VERSION || '1.0.0'}
+${config.ALIVE_MSG || 'I am alive!'}`;
+
+            await conn.sendMessage(from, {
+                image: { url: config.ALIVE_IMG || 'https://placeholder.com/400x300' },
+                caption: aliveMessage
+            }, { quoted: mek });
+            
+        } catch (error) {
+            logger.error('Alive command error:', error);
+            reply('❌ Error checking status: ' + error.message);
+        }
+    }
+}
+
+// menu.js - Enhanced menu command
+class MenuCommand extends BaseCommand {
+    constructor() {
+        super({
+            pattern: "menu",
+            desc: "Get command list",
+            category: "main",
+            filename: __filename
+        });
+    }
+
+    async execute(conn, mek, { from, pushname, reply }) {
+        try {
+            const config = await readEnv();
+            const categories = {
+                main: '🧠 Main',
+                download: '⬇️ Download',
+                group: '👥 Group',
+                owner: '👑 Owner',
+                convert: '🔄 Convert',
+                search: '🔍 Search'
+            };
+
+            let menu = Object.keys(categories).reduce((acc, cat) => {
+                acc[cat] = '';
+                return acc;
+            }, {});
+
+            // Organize commands by category
+            for (const cmd of commands) {
+                if (cmd.pattern && !cmd.dontAddCommandList) {
+                    const category = cmd.category || 'misc';
+                    menu[category] += `\n${config.PREFIX || '/'}${cmd.pattern}${cmd.desc ? ` - ${cmd.desc}` : ''}`;
+                }
+            }
+
+            // Build menu message
+            let menuText = `Hello ${pushname || 'User'} 👋\n\n`;
+            
+            for (const [category, title] of Object.entries(categories)) {
+                if (menu[category]) {
+                    menuText += `${title}\n${menu[category]}\n\n`;
+                }
+            }
+
+            menuText += `\nPowered by Sanidu Bot v${process.env.VERSION || '1.0.0'}`;
+
+            await conn.sendMessage(from, {
+                image: { url: config.ALIVE_IMG || '' },
+                caption: menuText
+            }, { quoted: mek });
+
+        } catch (error) {
+            logger.error('Menu command error:', error);
+            reply('❌ Error displaying menu: ' + error.message);
+        }
+    }
+}
+
+// system.js - Enhanced system command
+class SystemCommand extends BaseCommand {
+    constructor() {
+        super({
+            pattern: "system",
+            alias: ["status", "botinfo"],
+            desc: "Check system status",
+            category: "main",
+            filename: __filename
+        });
+    }
+
+    async execute(conn, mek, { reply }) {
+        try {
+            const formatBytes = (bytes) => {
+                const units = ['B', 'KB', 'MB', 'GB'];
+                let i = 0;
+                while (bytes >= 1024 && i < units.length - 1) {
+                    bytes /= 1024;
+                    i++;
+                }
+                return `${bytes.toFixed(2)} ${units[i]}`;
+            };
+
+            const systemInfo = {
+                uptime: runtime(process.uptime()),
+                memory: {
+                    used: formatBytes(process.memoryUsage().heapUsed),
+                    total: formatBytes(os.totalmem()),
+                    free: formatBytes(os.freemem())
+                },
+                cpu: {
+                    model: os.cpus()[0].model,
+                    cores: os.cpus().length,
+                    speed: `${os.cpus()[0].speed} MHz`
+                },
+                os: {
+                    platform: os.platform(),
+                    version: os.version(),
+                    hostname: os.hostname()
+                }
+            };
+
+            const status = `*System Status*
+🕒 Uptime: ${systemInfo.uptime}
+💾 Memory: ${systemInfo.memory.used} / ${systemInfo.memory.total}
+💻 CPU: ${systemInfo.cpu.model} (${systemInfo.cpu.cores} cores)
+🖥️ Platform: ${systemInfo.os.platform}
+🏠 Hostname: ${systemInfo.os.hostname}
+👑 Owner: Sanidu Herath ☣️`;
+
+            reply(status);
+
+        } catch (error) {
+            logger.error('System command error:', error);
+            reply('❌ Error getting system info: ' + error.message);
+        }
+    }
+}
+
+// restart.js - Enhanced restart command
+class RestartCommand extends BaseCommand {
+    constructor() {
+        super({
+            pattern: "restart",
+            desc: "Restart the bot",
+            category: "owner",
+            filename: __filename,
+            ownerOnly: true
+        });
+    }
+
+    async execute(conn, mek, { reply }) {
+        try {
+            const { exec } = require("child_process");
+            
+            await reply("🔄 Restarting bot...");
+            await sleep(1500);
+
+            // Graceful shutdown
+            await conn.sendPresenceUpdate('unavailable');
+            await conn.sendMessage(mek.key.remoteJid, {
+                text: '⚡ Bot is restarting. Please wait...'
+            });
+
+            // Execute restart
+            exec("pm2 restart all", (error, stdout, stderr) => {
+                if (error) {
+                    logger.error('Restart error:', error);
+                    reply('❌ Error restarting bot: ' + error.message);
+                    return;
+                }
+                logger.info('Bot restarted successfully');
+            });
+
+        } catch (error) {
+            logger.error('Restart command error:', error);
+            reply('❌ Error during restart: ' + error.message);
+        }
+    }
+}
+
+// Command registration
+const registerCommands = () => {
+    return [
+        new AliveCommand(),
+        new MenuCommand(),
+        new SystemCommand(),
+        new RestartCommand()
+    ];
+};
+
+module.exports = { BaseCommand, registerCommands };
