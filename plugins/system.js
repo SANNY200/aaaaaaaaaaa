@@ -1,27 +1,40 @@
 const config = require('../config');
-const { cmd, commands } = require('../command');
+const { cmd } = require('../command');
 const { runtime } = require('../lib/functions');
-const os = require('os'); // os module එක import කිරීම අත්‍යවශ්‍යයි
+const os = require('os');
 
 cmd({
     pattern: "system",
     alias: ["status", "botinfo"],
-    desc: "Check run time..., ram usage and more..",
+    desc: "Check run time, ram usage and more..",
     category: "main",
     filename: __filename
-}, async (conn, mek, m, {
-    from, quoted, body, isCmd, command, args, q, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply
-}) => {
+},
+async(conn, mek, m, {from, quoted, body, isCmd, command, args, q, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply}) => {
     try {
-        let status = `*Uptime:* ${runtime(process.uptime())}
-*Ram usage:* ${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)}MB / ${(os.totalmem() / 1024 / 1024).toFixed(2)}MB
-*HostName:* ${os.hostname()}
-*Owner:* Sanidu Herath ☣️`;
+        // Format bytes to MB
+        const formatMB = (bytes) => (bytes / 1024 / 1024).toFixed(2);
+        
+        // Get system information
+        const ramUsed = formatMB(process.memoryUsage().heapUsed);
+        const ramTotal = formatMB(os.totalmem());
+        const cpuModel = os.cpus()[0].model;
+        const cpuCores = os.cpus().length;
+        
+        let status = `*🤖 System Status*
+
+*⏱️ Uptime:* ${runtime(process.uptime())}
+*💾 RAM Usage:* ${ramUsed}MB / ${ramTotal}MB
+*💻 CPU:* ${cpuModel}
+*⚡ CPU Cores:* ${cpuCores}
+*🖥️ Platform:* ${os.platform()}
+*🏠 Hostname:* ${os.hostname()}
+*👑 Owner:* Sanidu Herath ☣️`;
 
         return reply(status);
 
     } catch (e) {
-        console.log(e);
-        reply(String(e));
+        console.log(e)
+        reply(String(e))
     }
 });
