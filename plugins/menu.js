@@ -1,71 +1,60 @@
 const { readEnv } = require('../lib/database');
 const { cmd, commands } = require('../command');
 
-cmd(
-  {
+cmd({
     pattern: "menu",
     desc: "Get Menu list.",
     category: "main",
-    filename: __filename,
-  },
-  async (
-    conn,
-    mek,
-    m,
-    {
-      from,
-      quoted,
-      pushname,
-      reply,
-    }
-  ) => {
+    filename: __filename
+},
+async(conn, mek, m, { from, pushname, reply }) => {
     try {
-      const config = await readEnv();
-      let menu = {
-        main: '',
-        download: '',
-        group: '',
-        owner: '',
-        convert: '',
-        search: ''
-      };
+        const config = await readEnv();
+        // Organized categories with arrays for better structure
+        const categories = {
+            main: [],
+            download: [],
+            group: [],
+            owner: [],
+            convert: [],
+            search: []
+        };
 
-      for (let i = 0; i < commands.length; i++) {
-        if (commands[i].pattern && !commands[i].dontAddCommandList) {
-          menu[commands[i].category] += `${config.PREFIX || '/'}${commands[i].pattern}\n`;
+        // Improved command organization
+        for (const command of commands) {
+            if (command.pattern && !command.dontAddCommandList) {
+                const category = command.category || 'main';
+                if (categories[category]) {
+                    categories[category].push({
+                        pattern: command.pattern,
+                        desc: command.desc || ''
+                    });
+                }
+            }
         }
-      }
 
-      let madeMenu = `✌️ Helow ${pushname || 'User'}
+        // Better formatted menu text
+        let menuText = `✨ Hello ${pushname || 'User'}\n\n`;
+        
+        // Dynamic category display
+        for (const [category, cmds] of Object.entries(categories)) {
+            if (cmds.length > 0) {
+                menuText += `*${category.toUpperCase()} COMMANDS*\n`;
+                cmds.forEach(cmd => {
+                    menuText += `${config.PREFIX || '/'}${cmd.pattern}${cmd.desc ? ` - ${cmd.desc}` : ''}\n`;
+                });
+                menuText += '\n';
+            }
+        }
 
-> Download commands ⬇️
-${menu.download || "No commands available."}
+        menuText += '\nPowered by Sanidu (●◡●)☣️';
 
-> Main commands 🧠
-${menu.main || "No commands available."}
-
-> Group commands 🧑🏻‍👩🏻‍👧🏻
-${menu.group || "No commands available."}
-
-> Owner commands 🫦
-${menu.owner || "No commands available."}
-
-> Convert commands 🤷
-${menu.convert || "No commands available."}
-
-> Search commands 👀
-${menu.search || "No commands available."}
-
-Powered by Sanidu (●◡●)☣️`;
-
-      await conn.sendMessage(
-        from,
-        { image: { url: config.ALIVE_IMG || '' }, caption: madeMenu },
-        { quoted: mek }
-      );
-    } catch (e) {
-      console.log(e);
-      reply(`${e}`);
+        await conn.sendMessage(from, {
+            image: { url: config.ALIVE_IMG || '' },
+            caption: menuText
+        }, { quoted: mek });
+    } catch(e) {
+        console.error('Menu command error:', e);
+        reply(`Error: ${e.message}`);
     }
-  }
-);
+});
