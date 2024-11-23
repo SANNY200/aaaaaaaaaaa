@@ -9,20 +9,18 @@ cmd({
     category: "owner",
     filename: __filename,
 },
-async (conn, mek, m, { from, q, reply, isOwner }) => {
+async(conn, mek, m, { from, q, reply, isOwner }) => {
     if (!isOwner) return;
 
     if (!q) {
         return reply("🙇‍♂️ *Please provide the environment variable and its new value.* \n\nExample: `.update ALIVE_MSG: hello i am SANIDU");
     }
 
-    // Find the position of the colon
     const delimiterIndex = q.indexOf(':');
     if (delimiterIndex === -1) {
         return reply("🫠 *Invalid format. Please use the format:* `.update KEY:VALUE`");
     }
 
-    // Extract key and value
     const key = q.substring(0, delimiterIndex).trim();
     const value = q.substring(delimiterIndex + 1).trim();
 
@@ -35,7 +33,6 @@ async (conn, mek, m, { from, q, reply, isOwner }) => {
         return reply("🫠 *Invalid format. Please use the format:* `.update KEY:VALUE`");
     }
 
-    // Specific checks for MODE, ALIVE_IMG, and AUTO_READ_STATUS
     if (key === 'MODE' && !validModes.includes(newValue)) {
         return reply(`😒 *Invalid mode. Valid modes are: ${validModes.join(', ')}*`);
     }
@@ -49,17 +46,14 @@ async (conn, mek, m, { from, q, reply, isOwner }) => {
     }
 
     try {
-        // Check if the environment variable exists
         const envVar = await EnvVar.findOne({ key: key });
 
         if (!envVar) {
-            // If the variable does not exist, fetch and list all existing env vars
-            const allEnvVars = await EnvVar.find({}).limit(10); // Limit to 10 variables
+            const allEnvVars = await EnvVar.find({}).limit(10);
             const envList = allEnvVars.map(env => `${env.key}: ${env.value}`).join('\n');
             return reply(`❌ *The environment variable ${key} does not exist.*\n\n*Here are some existing environment variables:*\n\n${envList}`);
         }
 
-        // Update the environment variable
         await updateEnv(key, newValue, mode);
         reply(`✅ *Environment variable updated.*\n\n🗃️ *${key}* ➠ ${newValue} ${mode ? `\n*Mode:* ${mode}` : ''}`);
         
