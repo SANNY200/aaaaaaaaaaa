@@ -1,8 +1,8 @@
 const config = require('../config');
 const { cmd, commands } = require('../command');
-const fg = require('api-dylux'); // මොඩියුලය භාවිතා කිරීමට පහසු කරන `api-dylux`
-const yts = require('yt-search'); // YouTube Search API
-const { yta, ytv } = require('api-dylux'); // Audio/Video Downloader Functions
+const fg = require('api-dylux'); 
+const yts = require('yt-search'); 
+const { yta, ytv } = require('api-dylux'); 
 
 // Song Downloader
 cmd({
