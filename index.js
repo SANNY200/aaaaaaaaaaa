@@ -233,4 +233,4 @@ class AliveCommand extends BaseCommand {
 🤖 *Bot Status: Online*
 ⏱️ Uptime: ${uptime}
 🔄 Version: ${process.env.VERSION || '1.0.0'}
-${config.ALIVE_MSG ||'fhfjghgg"}
+
