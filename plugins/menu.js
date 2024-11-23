@@ -1,42 +1,31 @@
 const { readEnv } = require('../lib/database');
 const { cmd, commands } = require('../command');
 
-cmd(
-  {
+cmd({
     pattern: "menu",
     desc: "Get Menu list.",
     category: "main",
     filename: __filename,
-  },
-  async (
-    conn,
-    mek,
-    m,
-    {
-      from,
-      quoted,
-      pushname,
-      reply,
-    }
-  ) => {
+},
+async(conn, mek, m, {from, quoted, pushname, reply}) => {
     try {
-      const config = await readEnv();
-      let menu = {
-        main: '',
-        download: '',
-        group: '',
-        owner: '',
-        convert: '',
-        search: ''
-      };
+        const config = await readEnv();
+        let menu = {
+            main: '',
+            download: '',
+            group: '',
+            owner: '',
+            convert: '',
+            search: ''
+        };
 
-      for (let i = 0; i < commands.length; i++) {
-        if (commands[i].pattern && !commands[i].dontAddCommandList) {
-          menu[commands[i].category] += `${config.PREFIX || '/'}${commands[i].pattern}\n`;
+        for (let i = 0; i < commands.length; i++) {
+            if (commands[i].pattern && !commands[i].dontAddCommandList) {
+                menu[commands[i].category] += `${config.PREFIX || '/'}${commands[i].pattern}\n`;
+            }
         }
-      }
 
-      let madeMenu = `✌️ Helow ${pushname || 'User'}
+        let madeMenu = `✌️ Helow ${pushname || 'User'}
 
 > Download commands ⬇️
 ${menu.download || "No commands available."}
@@ -58,14 +47,16 @@ ${menu.search || "No commands available."}
 
 Powered by Sanidu (●◡●)☣️`;
 
-      await conn.sendMessage(
-        from,
-        { image: { url: config.ALIVE_IMG || '' }, caption: madeMenu },
-        { quoted: mek }
-      );
+        await conn.sendMessage(
+            from,
+            { 
+                image: { url: config.ALIVE_IMG || '' }, 
+                caption: madeMenu 
+            },
+            { quoted: mek }
+        );
     } catch (e) {
-      console.log(e);
-      reply(`${e}`);
+        console.log(e);
+        reply(`${e}`);
     }
-  }
-);
+});
