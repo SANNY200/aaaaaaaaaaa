@@ -7,64 +7,52 @@ cmd({
     alias: ["updateenv"],
     desc: "Check and update environment variables",
     category: "owner",
-    filename: __filename,
+    filename: __filename
 },
-async (conn, mek, m, { from, q, reply, isOwner }) => {
-    if (!isOwner) return;
+async(conn, mek, m, { from, q, reply, isOwner }) => {
+    // Added owner check
+    if (!isOwner) return reply("❌ Owner command only!");
+    
+    // Better input validation
+    if (!q) return reply("🔍 Format: .update KEY:VALUE");
 
-    if (!q) {
-        return reply("🙇‍♂️ *Please provide the environment variable and its new value.* \n\nExample: `.update ALIVE_MSG: hello i am SANIDU");
+    // Improved key-value parsing
+    const [key, ...valueParts] = q.split(':');
+    if (!key || !valueParts.length) {
+        return reply("❌ Invalid format. Use: .update KEY:VALUE");
     }
 
-    // Find the position of the colon
-    const delimiterIndex = q.indexOf(':');
-    if (delimiterIndex === -1) {
-        return reply("🫠 *Invalid format. Please use the format:* `.update KEY:VALUE`");
-    }
-
-    // Extract key and value
-    const key = q.substring(0, delimiterIndex).trim();
-    const value = q.substring(delimiterIndex + 1).trim();
-
+    const value = valueParts.join(':').trim();
     const validModes = ['public', 'private', 'groups', 'inbox'];
-    const parts = value.split(/\s+/);
-    const newValue = parts[0];
-    const mode = parts[1] && validModes.includes(parts[1]) ? parts[1] : '';
+    const [newValue, mode] = value.split(/\s+/);
 
-    if (!key || !newValue) {
-        return reply("🫠 *Invalid format. Please use the format:* `.update KEY:VALUE`");
-    }
-
-    // Specific checks for MODE, ALIVE_IMG, and AUTO_READ_STATUS
+    // Enhanced validation for specific variables
     if (key === 'MODE' && !validModes.includes(newValue)) {
-        return reply(`😒 *Invalid mode. Valid modes are: ${validModes.join(', ')}*`);
+        return reply(`❌ Invalid mode. Use: ${validModes.join(', ')}`);
     }
 
     if (key === 'ALIVE_IMG' && !newValue.startsWith('https://')) {
-        return reply("😓 *Invalid URL format. PLEASE GIVE ME IMAGE URL*");
+        return reply("❌ Invalid URL. Must start with https://");
     }
 
     if (key === 'AUTO_READ_STATUS' && !['true', 'false'].includes(newValue)) {
-        return reply("😓 *Invalid value for AUTO_READ_STATUS. Please use `true` or `false`.*");
+        return reply("❌ Use 'true' or 'false' for AUTO_READ_STATUS");
     }
 
     try {
-        // Check if the environment variable exists
-        const envVar = await EnvVar.findOne({ key: key });
-
+        // Check if variable exists
+        const envVar = await EnvVar.findOne({ key });
         if (!envVar) {
-            // If the variable does not exist, fetch and list all existing env vars
-            const allEnvVars = await EnvVar.find({}).limit(10); // Limit to 10 variables
+            // Show available variables if not found
+            const allEnvVars = await EnvVar.find({}).limit(10);
             const envList = allEnvVars.map(env => `${env.key}: ${env.value}`).join('\n');
-            return reply(`❌ *The environment variable ${key} does not exist.*\n\n*Here are some existing environment variables:*\n\n${envList}`);
+            return reply(`❌ Variable ${key} not found.\n\nAvailable variables:\n${envList}`);
         }
 
-        // Update the environment variable
         await updateEnv(key, newValue, mode);
-        reply(`✅ *Environment variable updated.*\n\n🗃️ *${key}* ➠ ${newValue} ${mode ? `\n*Mode:* ${mode}` : ''}`);
-        
-    } catch (err) {
-        console.error('Error updating environment variable: ' + err.message);
-        reply("🙇‍♂️ *Failed to update the environment variable. Please try again.*\nError: " + err.message);
+        return reply(`✅ Updated ${key} = ${newValue}${mode ? ` (${mode})` : ''}`);
+    } catch(e) {
+        console.error('Update env error:', e);
+        reply(`Error: ${e.message}`);
     }
 });
