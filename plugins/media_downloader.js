@@ -1,93 +1,138 @@
 const config = require('../config');
-const { cmd } = require('../command');
+const { cmd, commands } = require('../command');
 const fg = require('api-dylux');
 const yts = require('yt-search');
 const { yta, ytv } = require('api-dylux');
 
+// Song Downloader 
 cmd({
     pattern: "song",
     desc: "Download song.",
-    category: "download",
+    category: "download", 
     filename: __filename
-},
-async(conn, mek, m, {from, reply, q}) => {
+}, async (conn, mek, m, {
+    from, quoted, body, isCmd, command, args, q, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply
+}) => {
     try {
-        if (!q) return reply('Please provide the song name.');
+        if (!q) return reply('Please provide the song name!');
         
+        reply('⏳ *Searching...*'); // Searching indicator
+
         const search = await yts(q);
+        if(!search.videos.length) return reply('Song not found!');
+        
         const data = search.videos[0];
         const url = data.url;
 
         let desc = `
-🧠 |||| *SANNY-BOT AUDIO DOWNLOADER* |||| 👍
-🎵 Title: ${data.title}
-📜 Description: ${data.description}
-⏱️ Duration: ${data.timestamp}
-📅 Uploaded: ${data.ago}
+🎵 *${config.BOT_NAME} SONG DOWNLOADER* 
+        
+📝 Title: ${data.title}
+⌚ Duration: ${data.timestamp} 
+📅 Upload: ${data.ago}
 👀 Views: ${data.views}
+👤 Author: ${data.author.name}
 
-MADE BY SANIDU 🫦
-        `;
+⏳ *Downloading your song...*`;
 
-        await conn.sendMessage(from, { image: { url: data.thumbnail }, caption: desc }, { quoted: mek });
-
-        let down = await yta(url);
-        let downloadUrl = down.dl_link;
-
-        await conn.sendMessage(from, { audio: { url: downloadUrl }, mimetype: "audio/mpeg" }, { quoted: mek });
         await conn.sendMessage(from, { 
-            document: { url: downloadUrl }, 
-            mimetype: "audio/mpeg", 
-            fileName: `${data.title}.mp3`,
-            caption: "MADE BY SANIDU 🫦" 
+            image: { url: data.thumbnail }, 
+            caption: desc 
         }, { quoted: mek });
+
+        try {
+            const audioData = await yta(url);
+            const dlLink = audioData.dl_link;
+            
+            // Send as audio
+            await conn.sendMessage(from, { 
+                audio: { url: dlLink }, 
+                mimetype: "audio/mpeg",
+                fileName: `${data.title}.mp3`
+            }, { quoted: mek });
+            
+            // Send as document 
+            await conn.sendMessage(from, {
+                document: { url: dlLink },
+                mimetype: "audio/mpeg",
+                fileName: `${data.title}.mp3`
+            }, { quoted: mek });
+
+        } catch (err) {
+            reply('Error downloading audio: ' + err.message);
+        }
 
     } catch (e) {
         console.log(e);
-        reply(String(e));
+        reply('Error: ' + e.message);
     }
 });
 
+// Video Downloader
 cmd({
     pattern: "video",
     desc: "Download video.",
     category: "download",
     filename: __filename
-},
-async(conn, mek, m, {from, reply, q}) => {
+}, async (conn, mek, m, {
+    from, quoted, body, isCmd, command, args, q, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply
+}) => {
     try {
-        if (!q) return reply('Please provide the video name.');
+        if (!q) return reply('Please provide the video name!');
+
+        reply('⏳ *Searching...*'); // Searching indicator
         
         const search = await yts(q);
+        if(!search.videos.length) return reply('Video not found!');
+        
         const data = search.videos[0];
         const url = data.url;
 
+        // Check video duration (10 minute limit)
+        if(data.seconds > 600) {
+            return reply('❌ Video duration exceeds 10 minutes limit!');
+        }
+
         let desc = `
-🧠 |||| *SANNY-BOT VIDEO DOWNLOADER* |||| 👍
-🎥 Title: ${data.title}
-📜 Description: ${data.description}
-⏱️ Duration: ${data.timestamp}
-📅 Uploaded: ${data.ago}
+🎥 *${config.BOT_NAME} VIDEO DOWNLOADER*
+        
+📝 Title: ${data.title}
+⌚ Duration: ${data.timestamp}
+📅 Upload: ${data.ago}
 👀 Views: ${data.views}
+👤 Author: ${data.author.name}
 
-MADE BY SANIDU 🫦
-        `;
+⏳ *Downloading your video...*`;
 
-        await conn.sendMessage(from, { image: { url: data.thumbnail }, caption: desc }, { quoted: mek });
-
-        let down = await ytv(url);
-        let downloadUrl = down.dl_link;
-
-        await conn.sendMessage(from, { video: { url: downloadUrl }, mimetype: "video/mp4" }, { quoted: mek });
-        await conn.sendMessage(from, {
-            document: { url: downloadUrl },
-            mimetype: "video/mp4",
-            fileName: `${data.title}.mp4`,
-            caption: "MADE BY SANIDU 🫦"
+        await conn.sendMessage(from, { 
+            image: { url: data.thumbnail }, 
+            caption: desc 
         }, { quoted: mek });
+
+        try {
+            const videoData = await ytv(url);
+            const dlLink = videoData.dl_link;
+
+            // Send as video
+            await conn.sendMessage(from, {
+                video: { url: dlLink },
+                caption: `🎥 ${data.title}`,
+                mimetype: "video/mp4"
+            }, { quoted: mek });
+
+            // Send as document
+            await conn.sendMessage(from, {
+                document: { url: dlLink },
+                mimetype: "video/mp4",
+                fileName: `${data.title}.mp4`
+            }, { quoted: mek });
+
+        } catch (err) {
+            reply('Error downloading video: ' + err.message);
+        }
 
     } catch (e) {
         console.log(e);
-        reply(String(e));
+        reply('Error: ' + e.message);
     }
 });
