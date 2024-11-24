@@ -160,9 +160,9 @@ async function connectToWA() {
                 loadPlugins();
 
                 // Send connection message to owner
-                const up = `Sanidu-BOT connected successful ✅\n\nPREFIX: ${prefix}`;
+                const up = `SANNY-MD connected successful ✅\n\nPREFIX: ${prefix}`;
                 conn.sendMessage(ownerNumber + "@s.whatsapp.net", { 
-                    image: { url: `https://telegra.ph/file/900435c6d3157c98c3c88.jpg` }, 
+                    image: { url: `https://api.logo.com/api/v2/images?logo=lg_kLwYGiGe3w59sFT356&width=128&height=128&fit=contain&margins=24&format=webp&quality=60&u=1732406547590` }, 
                     caption: up 
                 });
             }
