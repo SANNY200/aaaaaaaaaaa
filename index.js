@@ -2,170 +2,109 @@ const {
     default: makeWASocket,
     useMultiFileAuthState,
     DisconnectReason,
-    jidNormalizedUser,
-    getContentType,
     fetchLatestBaileysVersion,
     Browsers
 } = require('@whiskeysockets/baileys');
 
-const { getBuffer, getGroupAdmins, getRandom, h2k, isUrl, Json, runtime, sleep, fetchJson } = require('./lib/functions');
-const fs = require('fs-extra');
+const fs = require('fs');
 const path = require('path');
 const P = require('pino');
 const config = require('./config');
-const qrcode = require('qrcode-terminal');
-const util = require('util');
-const { sms, downloadMediaMessage } = require('./lib/msg');
-const axios = require('axios');
-const { File } = require('megajs');
-const { cmd, loadPlugins } = require('./command');
+const express = require('express');
 
-// Enhanced logging setup
+// Logger configuration
 const logDir = path.join(__dirname, 'logs');
-fs.ensureDirSync(logDir);
+if (!fs.existsSync(logDir)) {
+    fs.mkdirSync(logDir);
+}
 
 const logger = P({
     transport: {
         target: 'pino-pretty',
-        options: {
-            colorize: true,
-            destination: path.join(logDir, `bot-${new Date().toISOString().split('T')[0]}.log`),
-            mkdir: true,
-            timestamp: () => `,"time":"${new Date().toISOString()}"`,
-            ignore: 'pid,hostname'
-        }
+        options: { colorize: true, destination: path.join(logDir, 'bot.log') }
     }
 });
 
-// Bot owner number(s)
-const ownerNumber = ['94706075447'];
-
-// Auth directory setup
+// Directories for sessions and plugins
 const authDir = path.join(__dirname, 'auth_info_baileys');
-fs.ensureDirSync(authDir);
+if (!fs.existsSync(authDir)) {
+    fs.mkdirSync(authDir, { recursive: true });
+}
 
-// Enhanced session download function
-const downloadSession = async (sessdata) => {
-    try {
-        const filer = File.fromURL(`https://mega.nz/file/${sessdata}`);
-        const data = await new Promise((resolve, reject) => {
-            filer.download((err, data) => {
-                if (err) reject(err);
-                else resolve(data);
-            });
-        });
+const pluginsDir = path.join(__dirname, 'plugins');
+if (!fs.existsSync(pluginsDir)) {
+    fs.mkdirSync(pluginsDir);
+}
 
-        await fs.writeFile(path.join(authDir, 'creds.json'), data);
-        logger.info("Session downloaded successfully ✅");
-    } catch (error) {
-        logger.error('Session download error:', error);
-        throw error;
-    }
-};
-
-// Enhanced session check
+// Ensure session exists
 const ensureSession = async () => {
     const credsPath = path.join(authDir, 'creds.json');
     if (!fs.existsSync(credsPath)) {
-        if (!config.SESSION_ID) {
-            throw new Error('SESSION_ID not found in environment variables');
-        }
-        await downloadSession(config.SESSION_ID);
+        logger.error('No session file found. Please configure SESSION_ID.');
+        process.exit(1);
     }
 };
 
-// Main connection function
-async function connectToWA() {
+// Load plugins dynamically
+const loadPlugins = () => {
+    const pluginFiles = fs.readdirSync(pluginsDir).filter(file => file.endsWith('.js'));
+
+    logger.info(`Loading ${pluginFiles.length} plugins...`);
+    pluginFiles.forEach(file => {
+        try {
+            const pluginPath = path.join(pluginsDir, file);
+            require(pluginPath);
+            logger.info(`✅ Loaded plugin: ${file}`);
+        } catch (error) {
+            logger.error(`❌ Failed to load plugin ${file}:`, error);
+        }
+    });
+};
+
+// Express server for health check
+const app = express();
+app.get('/', (req, res) => res.send('Sanidu Bot is running! 🤖'));
+
+const port = process.env.PORT || 8080;
+app.listen(port, () => logger.info(`Server running on port ${port}`));
+
+// Main WhatsApp connection function
+const connectToWA = async () => {
     try {
-        // Initialize essentials
         await ensureSession();
-        const connectDB = require("./lib/mongodb");
-        await connectDB();
 
-        // Read environment config
-        const { readEnv } = require('./lib/database');
-        const botConfig = await readEnv();
-        const prefix = botConfig.PREFIX || '.';
-
-        // Initialize WhatsApp connection
         const { state, saveCreds } = await useMultiFileAuthState(authDir);
         const { version } = await fetchLatestBaileysVersion();
 
         const conn = makeWASocket({
             logger: P({ level: 'silent' }),
-            printQRInTerminal: true,
-            browser: Browsers.macOS("Chrome"),
             auth: state,
+            browser: Browsers.macOS('Chrome'),
             version
         });
 
-        // Connection update handler
-        conn.ev.on('connection.update', async (update) => {
+        conn.ev.on('connection.update', update => {
             const { connection, lastDisconnect } = update;
-            
             if (connection === 'close') {
                 const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-                logger.info('Connection closed due to ', lastDisconnect?.error, ', reconnecting ', shouldReconnect);
-                
-                if (shouldReconnect) {
-                    await connectToWA();
-                }
+                logger.warn(`Connection closed. Reconnecting: ${shouldReconnect}`);
+                if (shouldReconnect) connectToWA();
             } else if (connection === 'open') {
-                logger.info('Bot connected successfully! 🎉');
-                
-                // Load plugins
-                loadPlugins(path.join(__dirname, 'plugins'));
-
-                // Send connection message to owner
-                const message = `${config.BOT_NAME} connected successfully ✅\n\nPrefix: ${prefix}\nTime: ${new Date().toLocaleString()}`;
-                
-                for (const owner of ownerNumber) {
-                    await conn.sendMessage(owner + "@s.whatsapp.net", {
-                        image: { url: config.ALIVE_LOGO },
-                        caption: message
-                    });
-                }
+                logger.info('WhatsApp connected successfully!');
+                loadPlugins();
             }
         });
 
-        // Credentials update handler
         conn.ev.on('creds.update', saveCreds);
-
-        // Load message handler
-        require('./message_handler')(conn);
-
-        return conn;
-
     } catch (error) {
-        logger.error('Fatal error in connectToWA:', error);
-        
-        // Attempt reconnection after delay
-        setTimeout(connectToWA, 10000);
+        logger.error('Error in WhatsApp connection:', error);
+        setTimeout(connectToWA, 5000); // Retry connection after 5 seconds
     }
-}
+};
 
-// Express server setup
-const express = require("express");
-const app = express();
-const port = process.env.PORT || 8080;
+connectToWA();
 
-app.get("/", (req, res) => {
-    res.status(200).send(`${config.BOT_NAME} is running! 🤖\nUptime: ${runtime(process.uptime())}`);
-});
-
-// Initialize server and bot
-app.listen(port, () => {
-    logger.info(`Server running on port ${port}`);
-    setTimeout(connectToWA, 2000);
-});
-
-// Graceful shutdown handler
-process.on('SIGTERM', async () => {
-    logger.info('SIGTERM received. Performing graceful shutdown...');
-    
-    // Cleanup code here if needed
-    
+process.on('SIGTERM', () => {
+    logger.info('Received SIGTERM, shutting down...');
     process.exit(0);
 });
-
-module.exports = app;
