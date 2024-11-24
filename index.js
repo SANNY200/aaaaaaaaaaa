@@ -19,11 +19,17 @@ const { sms, downloadMediaMessage } = require('./lib/msg')
 const axios = require('axios')
 const { File } = require('megajs')
 
-// Ensure logs directory exists
-const logDir = path.join(__dirname, 'logs');
-if (!fs.existsSync(logDir)){
-    fs.mkdirSync(logDir);
+// Create required directories
+const createDirs = () => {
+    const dirs = ['logs', 'auth_info_baileys'];
+    dirs.forEach(dir => {
+        const dirPath = path.join(__dirname, dir);
+        if (!fs.existsSync(dirPath)) {
+            fs.mkdirSync(dirPath, { recursive: true });
+        }
+    });
 }
+createDirs();
 
 // Enhanced logging
 const logger = P({
@@ -31,105 +37,88 @@ const logger = P({
         target: 'pino-pretty',
         options: {
             colorize: true,
-            destination: path.join(logDir, 'bot.log'),
+            destination: path.join(__dirname, 'logs', 'bot.log'),
             mkdir: true
         }
     }
 });
 
-const ownerNumber = ['94706075447']
+const ownerNumber = config.OWNER_NUMBER || ['94706075447']
 
-// Create auth directory if not exists
-const authDir = path.join(__dirname, 'auth_info_baileys');
-if (!fs.existsSync(authDir)){
-    fs.mkdirSync(authDir, { recursive: true });
-}
-
-// Session download function
-const downloadSession = (sessdata) => {
-    return new Promise((resolve, reject) => {
+// Session handling
+const downloadSession = async (sessdata) => {
+    try {
         const filer = File.fromURL(`https://mega.nz/file/${sessdata}`);
-        filer.download((err, data) => {
-            if (err) {
-                logger.error('Session download error:', err);
-                reject(err);
-            } else {
-                fs.writeFile(path.join(authDir, 'creds.json'), data, (writeErr) => {
-                    if (writeErr) {
-                        logger.error('Session write error:', writeErr);
-                        reject(writeErr);
-                    } else {
-                        logger.info("Session downloaded successfully ✅");
-                        resolve();
-                    }
-                });
-            }
+        const data = await new Promise((resolve, reject) => {
+            filer.download((err, data) => {
+                if (err) reject(err);
+                else resolve(data);
+            });
         });
-    });
+        
+        await fs.promises.writeFile(path.join(__dirname, 'auth_info_baileys', 'creds.json'), data);
+        logger.info("Session downloaded successfully ✅");
+    } catch (error) {
+        logger.error('Session download error:', error);
+        throw error;
+    }
 };
 
-// Ensure session exists
 const ensureSession = async () => {
-    const credsPath = path.join(authDir, 'creds.json');
+    const credsPath = path.join(__dirname, 'auth_info_baileys', 'creds.json');
     if (!fs.existsSync(credsPath)) {
         if (!config.SESSION_ID) {
-            logger.error('Please add your session to SESSION_ID env!!');
-            process.exit(1);
+            throw new Error('Please add your session to SESSION_ID env!!');
         }
         await downloadSession(config.SESSION_ID);
     }
 };
 
-// Plugin loader with error handling
+// Plugin loader
 const loadPlugins = () => {
     const pluginsDir = path.join(__dirname, 'plugins');
-    
-    // Ensure plugins directory exists
-    if (!fs.existsSync(pluginsDir)){
+    if (!fs.existsSync(pluginsDir)) {
         fs.mkdirSync(pluginsDir);
+        logger.info('Created plugins directory');
+        return;
     }
 
     const pluginFiles = fs.readdirSync(pluginsDir)
-        .filter(file => path.extname(file).toLowerCase() === '.js');
+        .filter(file => file.endsWith('.js'));
     
     logger.info(`Loading ${pluginFiles.length} plugins...`);
 
-    pluginFiles.forEach(file => {
+    for (const file of pluginFiles) {
         try {
-            const pluginPath = path.join(pluginsDir, file);
-            const plugin = require(pluginPath);
+            require(path.join(pluginsDir, file));
             logger.info(`✅ Loaded plugin: ${file}`);
         } catch (err) {
             logger.error(`❌ Error loading plugin ${file}:`, err);
         }
-    });
+    }
 };
 
-// Express setup for render
+// Express server setup
 const express = require("express");
 const app = express();
 const port = process.env.PORT || 8080;
 
-// Health check endpoint
 app.get("/", (req, res) => {
-    res.status(200).send("Sanidu Bot is running! 🤖");
+    res.status(200).send(`${config.BOT_NAME} is running! 🤖`);
 });
 
-// Main connection function
+// WhatsApp connection
 async function connectToWA() {
     try {
-        // Ensure session and database
         await ensureSession();
         const connectDB = require("./lib/mongodb");
         await connectDB();
 
-        // Read environment config
         const { readEnv } = require('./lib/database');
         const config = await readEnv(' ');
-        const prefix = await config.PREFIX || '.';
+        const prefix = config.PREFIX || '.';
 
-        // Baileys connection
-        const { state, saveCreds } = await useMultiFileAuthState(authDir);
+        const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
         const { version } = await fetchLatestBaileysVersion();
 
         const conn = makeWASocket({
@@ -145,65 +134,70 @@ async function connectToWA() {
             const { connection, lastDisconnect } = update;
             
             if (connection === 'close') {
-                const shouldReconnect = 
-                    lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
-                
+                const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
                 logger.info(`Connection closed. Reconnect: ${shouldReconnect}`);
                 
                 if (shouldReconnect) {
-                    await connectToWA();
+                    setTimeout(connectToWA, 3000);
                 }
             } else if (connection === 'open') {
                 logger.info('Bot connected successfully! 🎉');
-                
-                // Load plugins
                 loadPlugins();
 
                 // Send connection message to owner
-                const up = `SANNY-MD connected successful ✅\n\nPREFIX: ${prefix}`;
-                conn.sendMessage(ownerNumber + "@s.whatsapp.net", { 
-                    image: { url: `https://api.logo.com/api/v2/images?logo=lg_kLwYGiGe3w59sFT356&width=128&height=128&fit=contain&margins=24&format=webp&quality=60&u=1732406547590` }, 
-                    caption: up 
-                });
+                const status = `
+${config.BOT_NAME} connected successfully ✅
+
+⚡ PREFIX: ${prefix}
+📅 DATE: ${new Date().toLocaleDateString()}
+⏰ TIME: ${new Date().toLocaleTimeString()}
+                `;
+
+                for (const owner of ownerNumber) {
+                    await conn.sendMessage(owner + "@s.whatsapp.net", {
+                        image: { url: config.ALIVE_IMAGE || 'https://telegra.ph/file/900435c6d3157c98c3c88.jpg' },
+                        caption: status
+                    }).catch(err => logger.error('Error sending owner message:', err));
+                }
             }
         });
 
         conn.ev.on('creds.update', saveCreds);
-
-        // Message handling logic remains the same as in your original code
+        
         require('./message_handler')(conn);
 
     } catch (err) {
         logger.error('Fatal error in connectToWA:', err);
-        setTimeout(connectToWA, 5000); // Retry after 5 seconds
+        setTimeout(connectToWA, 5000);
     }
 }
 
-// Server startup
+// Start server and bot
 app.listen(port, () => {
     logger.info(`Server running on port ${port}`);
-    
-    // Connect to WhatsApp after a short delay
     setTimeout(connectToWA, 3000);
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-    logger.info('SIGTERM received. Shutting down gracefully.');
-    process.exit(0);
+process.on('SIGTERM', async () => {
+    logger.info('SIGTERM received. Shutting down gracefully...');
+    try {
+        // Cleanup tasks here
+        process.exit(0);
+    } catch (err) {
+        logger.error('Error during shutdown:', err);
+        process.exit(1);
+    }
 });
 
-module.exports = app;
-
-
-// commandHandler.js - Base command handler class
+// Command handler classes
 class BaseCommand {
-    constructor(options) {
-        this.pattern = options.pattern;
+    constructor(options = {}) {
+        this.pattern = options.pattern || '';
         this.alias = options.alias || [];
-        this.desc = options.desc;
-        this.category = options.category;
-        this.filename = options.filename;
+        this.desc = options.desc || '';
+        this.category = options.category || 'misc';
+        this.filename = options.filename || __filename;
         this.cooldown = options.cooldown || 0;
         this.ownerOnly = options.ownerOnly || false;
     }
@@ -213,12 +207,12 @@ class BaseCommand {
     }
 }
 
-// alive.js - Enhanced alive command
+// Core commands
 class AliveCommand extends BaseCommand {
     constructor() {
         super({
             pattern: "alive",
-            desc: "Check bot online status",
+            desc: "Check bot status",
             category: "main",
             filename: __filename
         });
@@ -230,7 +224,167 @@ class AliveCommand extends BaseCommand {
             const uptime = runtime(process.uptime());
             
             const aliveMessage = `
-🤖 *Bot Status: Online*
-⏱️ Uptime: ${uptime}
-🔄 Version: ${process.env.VERSION || '1.0.0'}
+🤖 *Bot Status:* Online
+⚡ *Version:* ${process.env.VERSION || '2.0.0'}
+⏱️ *Uptime:* ${uptime}
+👑 *Owner:* ${config.OWNER_NAME || 'Sanidu'}
 
+${config.ALIVE_MESSAGE || ''}`;
+
+            await conn.sendMessage(from, {
+                image: { url: config.ALIVE_IMAGE || 'https://telegra.ph/file/900435c6d3157c98c3c88.jpg' },
+                caption: aliveMessage
+            }, { quoted: mek });
+            
+        } catch (error) {
+            logger.error('Alive command error:', error);
+            reply('❌ Error: ' + error.message);
+        }
+    }
+}
+
+class MenuCommand extends BaseCommand {
+    constructor() {
+        super({
+            pattern: "menu",
+            desc: "Show command list",
+            category: "main",
+            filename: __filename
+        });
+    }
+
+    async execute(conn, mek, { from, pushname, reply }) {
+        try {
+            const config = await readEnv();
+            const categories = {
+                main: '🧠 Main',
+                download: '⬇️ Download',
+                group: '👥 Group',
+                owner: '👑 Owner',
+                convert: '🔄 Convert',
+                search: '🔍 Search'
+            };
+
+            let menu = {};
+            Object.keys(categories).forEach(cat => menu[cat] = '');
+
+            // Organize commands
+            commands.forEach(cmd => {
+                if (cmd.pattern && !cmd.dontAddCommandList) {
+                    const category = cmd.category || 'misc';
+                    menu[category] += `\n${config.PREFIX || '.'}${cmd.pattern} - ${cmd.desc || 'No description'}`;
+                }
+            });
+
+            let menuText = `Hello ${pushname || 'User'} 👋\n\n`;
+            
+            Object.entries(categories).forEach(([category, title]) => {
+                if (menu[category]) {
+                    menuText += `${title}\n${menu[category]}\n\n`;
+                }
+            });
+
+            menuText += `\n*${config.BOT_NAME}* by ${config.OWNER_NAME}`;
+
+            await conn.sendMessage(from, {
+                image: { url: config.MENU_IMAGE || config.ALIVE_IMAGE },
+                caption: menuText
+            }, { quoted: mek });
+
+        } catch (error) {
+            logger.error('Menu command error:', error);
+            reply('❌ Error: ' + error.message);
+        }
+    }
+}
+
+class SystemCommand extends BaseCommand {
+    constructor() {
+        super({
+            pattern: "system",
+            alias: ["status", "info"],
+            desc: "System information",
+            category: "main",
+            filename: __filename
+        });
+    }
+
+    async execute(conn, mek, { reply }) {
+        try {
+            const os = require('os');
+            const formatBytes = (bytes) => {
+                const units = ['B', 'KB', 'MB', 'GB'];
+                let i = 0;
+                while (bytes >= 1024 && i < units.length - 1) {
+                    bytes /= 1024;
+                    i++;
+                }
+                return `${bytes.toFixed(2)} ${units[i]}`;
+            };
+
+            const status = `*${config.BOT_NAME} System Status*
+
+🕒 Uptime: ${runtime(process.uptime())}
+💻 Platform: ${os.platform()}
+💾 Memory: ${formatBytes(process.memoryUsage().heapUsed)}
+🔄 Version: ${process.env.VERSION || '2.0.0'}
+👑 Owner: ${config.OWNER_NAME}`;
+
+            reply(status);
+
+        } catch (error) {
+            logger.error('System command error:', error);
+            reply('❌ Error: ' + error.message);
+        }
+    }
+}
+
+class RestartCommand extends BaseCommand {
+    constructor() {
+        super({
+            pattern: "restart",
+            desc: "Restart bot",
+            category: "owner",
+            filename: __filename,
+            ownerOnly: true
+        });
+    }
+
+    async execute(conn, mek, { reply }) {
+        try {
+            await reply("🔄 Restarting...");
+            await sleep(1500);
+
+            const { exec } = require("child_process");
+            exec("pm2 restart all", (error, stdout, stderr) => {
+                if (error) {
+                    logger.error('Restart error:', error);
+                    reply('❌ Error: ' + error.message);
+                    return;
+                }
+                logger.info('Bot restarted successfully');
+            });
+
+        } catch (error) {
+            logger.error('Restart command error:', error);
+            reply('❌ Error: ' + error.message);
+        }
+    }
+}
+
+// Register commands
+const registerCommands = () => {
+    return [
+        new AliveCommand(),
+        new MenuCommand(),
+        new SystemCommand(),
+        new RestartCommand()
+    ];
+};
+
+module.exports = {
+    BaseCommand,
+    registerCommands,
+    connectToWA,
+    app
+};
